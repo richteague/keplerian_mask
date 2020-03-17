@@ -6,7 +6,7 @@ A script to build a Keplerian mask based to be used for CLEANing or moment map a
 
 First, load up the function into the CASA instance:
 
-```
+```python
 CASA <X>: execfile('path/to/keplerian_mask.py')
      ...: Succesfully imported `make_mask`.
 ```
