@@ -13,7 +13,7 @@ CASA <X>: execfile('path/to/keplerian_mask.py')
 
 With this loaded, to make a Keplerian mask you just need to provide some simple geometrical properties of the disk:
 
-```
+```python
 CASA <X>: make_mask('image_name.image',
      ...:           inc=30.0,
      ...:           PA=75.0,
@@ -31,11 +31,28 @@ This command will produce a new file, `image_name.mask.image`, which is the mask
 
 There are a few additional options to make a better fitting mask to your data.
 
+### Inner and Outer Radii
+
+The `r_min` and `r_max` arguments allow you to tailor the masks inner and outer radii to the emission that you observe. Both of these values are given in arcseconds.
+
+For example, to have a ring-like mask between 0.5 and 2.5 arcseconds in (deprojected) radius:
+
+```python
+CASA <X>: make_mask('image_name.image',
+     ...:           inc=30.0,
+     ...:           PA=75.0,
+     ...:           mstar=1.0,
+     ...:           dist=140.0,
+     ...:           vlsr=5.1e3,
+     ...:           r_min=0.5,
+     ...:           r_max=2.5)
+```
+
 ### Convolution
 
 The mask can be convolved to smooth out the edges and give a bit of a buffer between the mask edge and the emission edge. There are two ways this can be done, either by including a convolution with the rescaled beam with the `nbeams` parameter:
 
-```
+```python
 CASA <X>: make_mask('image_name.image',
      ...:           inc=30.0,
      ...:           PA=75.0,
@@ -45,9 +62,9 @@ CASA <X>: make_mask('image_name.image',
      ...:           nbeams=1.0)
 ```
 
-Or by convoling with a circular beam with a FWHM in arcseconds given by `target_res`:
+Or by convolving with a circular beam with a FWHM in arcseconds given by `target_res`:
 
-```
+```python
 CASA <X>: make_mask('image_name.image',
      ...:           inc=30.0,
      ...:           PA=75.0,
@@ -63,7 +80,7 @@ Each one of these will use CASA's `imsmooth` task to convolve the mask. As the c
 
 We can also include a non-zero emission height for molecules like 12CO. This can either by specified by a constant z/r value with the `zr` argument,
 
-```
+```python
 CASA <X>: make_mask('image_name.image',
      ...:           inc=30.0,
      ...:           PA=75.0,
@@ -75,7 +92,7 @@ CASA <X>: make_mask('image_name.image',
 
 If you want a more complex emission surface you can define a function which takes the midplane radius in arcsec and returns the emission height in arcsec.
 
-```
+```python
 CASA <X>: def z_func(r):
      ...:     return 0.3 * r**1.5
 
@@ -96,7 +113,7 @@ With higher spatial resolutions it is possible to resolve the radially changing 
 
 where `dV0` and `dVq` are parameters which can control this surface. The default values are 300 m/s for `dV0` and -0.5 for `dVq`.
 
-```
+```python
 CASA <X>: make_mask('image_name.image',
      ...:           inc=30.0,
      ...:           PA=75.0,
