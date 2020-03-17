@@ -22,7 +22,7 @@ CASA <X>: make_mask('image_name.image',
      ...:           vlsr=5.1e3)         
 ```
 
-Hopefully the parameters are obvious, but for clarity, `inc` is the disk inclinaiton in degrees, `PA` is the disk position angle in degrees, measured from North to the redshifted major axis in an anti-clockwise fasion. `mstar` is the stellar mass in solar masses, `dist` is the source distance in parsce and `vlsr` is the sytemic velocity in meters per second.
+Hopefully the parameters are obvious, but for clarity, `inc` is the disk inclination in degrees, `PA` is the disk position angle in degrees, measured from North to the redshifted major axis in an anti-clockwise fashion. `mstar` is the stellar mass in solar masses, `dist` is the source distance in parsec and `vlsr` is the systemic velocity in meters per second.
 
 This command will produce a new file, `image_name.mask.image`, which is the mask which can be passed to future `tclean` calls or exported as a FITS file.
 
@@ -90,7 +90,7 @@ CASA <X>: make_mask('image_name.image',
      ...:           zr=0.3)
 ```
 
-If you want a more complex emission surface you can define a function which takes the midplane radius in arcsec and returns the emission height in arcsec.
+If you want a more complex emission surface you can define a function which takes the midplane radius in arcseconds and returns the emission height in arcseconds.
 
 ```python
 CASA <X>: def z_func(r):
