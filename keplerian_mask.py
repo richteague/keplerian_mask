@@ -216,17 +216,22 @@ def _deproject(x, y, dx0=0.0, dy0=0.0, inc=0.0, PA=0.0, zr=0.0, z_func=None):
             deprojected coordinates in [arcsec], [rad], [arcec], respectively.
     """
 
-    # Define the emission function.
+    # Define the emission function. This is bit messy to account for the
+    # possibility of both user-defined emission surfaces and a simple conical
+    # surface.
     if z_func is None:
-        def z_func(r):
+        def z_func_tmp(r):
             return zr * r
-    assert callable(z_func), "Must provide a callable `z_func`."
+    else:
+        def z_func_tmp(r):
+            return zr * z_func(r)
+        assert callable(z_func), "Must provide a callable `z_func`."
 
     # Iterate to define the correct correction for the height.
     x_mid, y_mid = _midplane_coords(x, y, dx0, dy0, inc, PA)
     r_tmp, t_tmp = np.hypot(x_mid, y_mid), np.arctan2(y_mid, x_mid)
     for _ in range(10):
-        z_tmp = z_func(r_tmp)
+        z_tmp = z_func_tmp(r_tmp)
         y_tmp = y_mid + z_tmp * np.tan(np.radians(inc))
         r_tmp = np.hypot(y_tmp, x_mid)
         t_tmp = np.arctan2(y_tmp, x_mid)
@@ -343,6 +348,14 @@ def _convolve_image(image, mask, nbeams=None, target_res=None, overwrite=True):
         os.system('mv {}.conv {}'.format(mask, mask))
 
 
+def _make_zr_list(zr, max_dzr=0.1):
+    """List of equally spaced z/r heights with a minimum spacing max_dzr."""
+    a = np.arange(0.0, zr, max_dzr)
+    a = np.append(a, zr) if a[-1] != zr else a
+    a = np.concatenate([-a[1:][::-1], a])
+    return np.linspace(a[0], a[-1], a.size)
+
+
 def _save_as_mask(image, tolerance=0.01):
     """
     Save the provided images as a boolean mask.
@@ -362,7 +375,7 @@ def _save_as_mask(image, tolerance=0.01):
 def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
-              estimate_rms=True):
+              estimate_rms=True, max_dzr=0.2):
     """
     Make a Keplerian mask for CLEANing.
 
@@ -403,6 +416,8 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             assumed to be in [Hz].
         estimate_rms (optional[bool]): If True, calculate and return the RMS of
             the masked regions to estimate CLEANing thresholds.
+        max_dzr (optional[float]): Maximum spacing in zr to use when filling in
+            the image plane for highly elevated models.
 
     Returns:
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
@@ -410,36 +425,23 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # Grab the velocity axis.
     image = image if image[-1] != '/' else image[:-1]
     v_axis = _generate_axes(image)[-1]
+    dvchan = 0.5 * abs(np.diff(v_axis).mean())
 
     # Define the rest frequencies and cycle through them.
     mask = None
+    zr_list = _make_zr_list(zr, max_dzr) if z_func is None else [-1., 0., 1.]
     for offset in _get_offsets(image, restfreqs):
-
-        # Get the projected velocities and Doppler widths.
-        # This bit is a bit awkward, can probably streamline this somehow.
-        r, t, z = _get_disk_coords(image, dx0, dy0, inc, PA, zr, z_func)
-        vkep = _get_projected_vkep(r, t, z, mstar, dist, inc, vlsr + offset)
-        dV = _get_linewidth(r, dV0, dVq)
-        mskf = np.logical_and(abs(v_axis[None, None, None, :] - vkep) < dV,
-                              np.logical_and(r >= r_min, r <= r_max))
-
-        # If appropriate, do the far side of the disk.
-        # I _think_ this is the right way of doing this.
-        if zr == 0.0 and z_func is None:
-            mskb = mskf
-        else:
-            r, t, z = _get_disk_coords(image, dx0, dy0, -inc, PA, zr, z_func)
+        for zr in zr_list:
+            r, t, z = _get_disk_coords(image, dx0, dy0, inc, PA, zr, z_func)
             vkep = _get_projected_vkep(r, t, z, mstar, dist, inc, vlsr+offset)
-            dV = _get_linewidth(r, dV0, dVq) * 1.18
-            mskb = np.logical_and(abs(v_axis[None, None, None, :] - vkep) < dV,
-                                  np.logical_and(r >= r_min, r <= r_max))
-
-        # Combine the masks.
-        mask_tmp = np.where(np.logical_or(mskf, mskb), 1.0, 0.0)
-        if mask is None:
-            mask = mask_tmp
-        else:
-            mask = np.where(np.logical_or(mask, mask_tmp), 1.0, 0.0)
+            dV = _get_linewidth(r, dV0, dVq)
+            r_mask = np.logical_and(r >= r_min, r <= r_max)
+            v_mask = abs(v_axis[None, None, None, :] - vkep) < dV + dvchan
+            tmp_mask = np.logical_and(r_mask, v_mask)
+            if mask is None:
+                mask = tmp_mask
+            else:
+                mask = np.where(np.logical_or(mask, tmp_mask), 1.0, 0.0)
 
     # Save it as a mask. Again, clunky but it works.
     _save_as_image(image, mask)
