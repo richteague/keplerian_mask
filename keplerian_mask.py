@@ -375,7 +375,7 @@ def _save_as_mask(image, tolerance=0.01):
 def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
-              estimate_rms=True, max_dzr=0.2):
+              estimate_rms=True, max_dzr=0.2, export_FITS=False):
     """
     Make a Keplerian mask for CLEANing.
 
@@ -418,6 +418,7 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             the masked regions to estimate CLEANing thresholds.
         max_dzr (optional[float]): Maximum spacing in zr to use when filling in
             the image plane for highly elevated models.
+        export_FITS (optional[bool]): If True, export the mask as a FITS file.
 
     Returns:
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
@@ -449,10 +450,15 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         _convolve_image(image, image.replace('.image', '.mask.image'),
                         nbeams=nbeams, target_res=target_res)
     _save_as_mask(image.replace('.image', '.mask.image'), tolerance)
+    mask = image.replace('.image', '.mask.image')
+
+    # Export as a FITS file if requested.
+    if export_FITS:
+        exportfits(imagename=mask, fitsimage=mask.replace('.image', '.fits'),
+                   dropstokes=True)
 
     # Estimate the RMS of the un-masked pixels.
     if estimate_rms:
-        mask = image.replace('.image', '.mask.image')
         rms = imstat(imagename=image, mask='"{}" < 1.0'.format(mask))['rms'][0]
         print_rms = rms if rms > 1e-2 else rms * 1e3
         print_unit = 'Jy' if rms > 1e-2 else 'mJy'
