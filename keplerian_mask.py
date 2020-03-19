@@ -350,6 +350,8 @@ def _convolve_image(image, mask, nbeams=None, target_res=None, overwrite=True):
 
 def _make_zr_list(zr, max_dzr=0.1):
     """List of equally spaced z/r heights with a minimum spacing max_dzr."""
+    if zr == 0.0:
+        return np.zeros(1)
     a = np.arange(0.0, zr, max_dzr)
     a = np.append(a, zr) if a[-1] != zr else a
     a = np.concatenate([-a[1:][::-1], a])
