@@ -368,7 +368,7 @@ def _save_as_mask(image, tolerance=0.01):
             masked.
     """
     ia.open(image)
-    ia.calcmask('{} > {:.2f}'.format(image, tolerance), name='mask0')
+    ia.calcmask('"{}" > {:.2f}'.format(image, tolerance), name='mask0')
     ia.done()
     makemask(mode='copy', inpimage=image, inpmask='{}:mask0'.format(image),
              output=image, overwrite=True)
@@ -442,7 +442,7 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             v_mask = abs(v_axis[None, None, None, :] - vkep) < dV + dvchan
             tmp_mask = np.logical_and(r_mask, v_mask)
             if mask is None:
-                mask = tmp_mask
+                mask = np.where(tmp_mask, 1.0, 0.0)
             else:
                 mask = np.where(np.logical_or(mask, tmp_mask), 1.0, 0.0)
 
