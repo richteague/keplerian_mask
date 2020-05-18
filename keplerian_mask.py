@@ -13,7 +13,7 @@ Load up the functions.
 
 With this loaded, to make a Keplerian mask you will get,
 
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3)
 
 which will produce an 'image_name.mask.image' mask.
@@ -34,7 +34,7 @@ arcseconds,
 > def z_func(r):
 >     return 0.3 * r**1.5
 >
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3,
 >           z_func=z_func)
 
@@ -45,7 +45,7 @@ dV(r) = dV0 * (r / 1")**dVq
 
 which can be changed with the `dV0` and `dVq` parameters.
 
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3,
 >           dV0=500.0, dVq=-0.45)
 
@@ -56,13 +56,13 @@ Finally, one can also convolve the mask with a 2D Gaussian beam. This can
 either be a scale version of the clean beam attached to the image, using the
 parameter `nbeams`,
 
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3, nbeams=1.5)
 
 or specify the FWHM in arcseconds of a circular convolution kernel with
 `target_res`,
 
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3, target_res=1.0)
 
 Author
@@ -169,7 +169,7 @@ def _make_axis(header, axis_name):
     return axis
 
 
-def _generate_axes(image):
+def _read_image_axes(image):
     """
     Reads an image header to create the axes which match the provided image.
 
@@ -266,9 +266,8 @@ def _keplerian(r, t, z, mstar, dist, inc):
     return np.sqrt(v) * np.cos(t) * np.sin(np.radians(abs(inc)))
 
 
-def _get_disk_coords(image, dx0, dy0, inc, PA, zr, z_func):
+def _get_disk_coords(x, y, s, v, dx0, dy0, inc, PA, zr, z_func):
     """Return the deprojected disk cylindrical coordinates."""
-    x, y, s, v = _generate_axes(image)
     rvals, tvals, zvals = _deproject(x=x, y=y, dx0=dx0, dy0=dy0, inc=inc,
                                      PA=PA, zr=zr, z_func=z_func)
     rvals = rvals[:, :, None, None] * np.ones((x.size, y.size, s.size, v.size))
@@ -374,7 +373,8 @@ def _save_as_mask(image, tolerance=0.01):
              output=image, overwrite=True)
 
 
-def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
+def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
+              image=None, x_axis=None, y_axis=None, s_axis=None, v_axis=None,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
               estimate_rms=True, max_dzr=0.2, export_FITS=False):
@@ -382,18 +382,25 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     Make a Keplerian mask for CLEANing.
 
     Args:
-        image (str): Path to the image file to make the mask for.
         inc (float): Inclination of the disk in [deg].
         PA (float): Position angle of the disk, measured Eastwards of North to
             the redshifted axis, in [deg].
         dist (float): Source distance in [pc].
         mstar (float): Mass of the central star in [Msun].
         vlsr (float): Systemic velocity in [m/s].
-        disk_dict (dict): Dictionary of disk parameters from
-            'generalanalysis/diskdictionary.py'.
         dx0 (optional[float]): Source center offset along x-axis [arcsec].
         dy0 (optional[float]): Source center offset along y-axis [arcsec].
         zr (optional[float]): For elevated emission, the z/r value.
+        image (optional[str]): Path to the image file to make the mask for. If
+            an `image` is not specified, the user must specify the axes
+            instead.
+        x_axis (optional[array]): Right ascension axis in [arcsec], offsets
+            relative to the image center.
+        y_axis (optional[array]): Declination axis in [arcsec], offsets
+            relative to the image center.
+        s_axis (optional[array]): Stokes axis. Must be at least `np.zeros(1)`
+            to represent a single Stokes I component.
+        v_axis (optional[array]): Velocity axis in [m/s] in the LSRK frame.
         z_func (optional[callable]: For elevated emission, a callable
             function which takes the disk midplane radius in [arcsec] and
             returns the emission height in [arcsec]. This will take precedent
@@ -422,12 +429,18 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             the image plane for highly elevated models.
         export_FITS (optional[bool]): If True, export the mask as a FITS file.
 
-    Returns:
+    Returns (if `image` is not None):
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
+
+    Return (if `image` is None):
+        mask (ndarray): Numpy boolean array of the masked values.
     """
-    # Grab the velocity axis.
-    image = image if image[-1] != '/' else image[:-1]
-    v_axis = _generate_axes(image)[-1]
+    # Define the image axes.
+    if image is not None:
+        image = image if image[-1] != '/' else image[:-1]
+        x_axis, y_axis, s_axis, v_axis = _read_image_axes(image)
+    if any([tmp is None for tmp in [x_axis, y_axis, s_axis, v_axis]]):
+        raise ValueError("Must provide all four image axes.")
     dvchan = 0.5 * abs(np.diff(v_axis).mean())
 
     # Define the rest frequencies and cycle through them.
@@ -435,7 +448,8 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     zr_list = _make_zr_list(zr, max_dzr) if z_func is None else [-1., 0., 1.]
     for offset in _get_offsets(image, restfreqs):
         for zr in zr_list:
-            r, t, z = _get_disk_coords(image, dx0, dy0, inc, PA, zr, z_func)
+            r, t, z = _get_disk_coords(x_axis, y_axis, s_axis, v_axis,
+                                       dx0, dy0, inc, PA, zr, z_func)
             vkep = _get_projected_vkep(r, t, z, mstar, dist, inc, vlsr+offset)
             dV = _get_linewidth(r, dV0, dVq)
             r_mask = np.logical_and(r >= r_min, r <= r_max)
@@ -445,6 +459,10 @@ def make_mask(image, inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
                 mask = np.where(tmp_mask, 1.0, 0.0)
             else:
                 mask = np.where(np.logical_or(mask, tmp_mask), 1.0, 0.0)
+
+    # If any image was not specified, we return the array here.
+    if image is None:
+        return np.where(mask <= tolerance, False, True)
 
     # Save it as a mask. Again, clunky but it works.
     _save_as_image(image, mask)
