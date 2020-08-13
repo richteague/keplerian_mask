@@ -484,6 +484,7 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         print_unit = 'Jy' if rms > 1e-2 else 'mJy'
         print("# Estimated RMS of unmasked regions: " +
               "{:.2f} {}/beam".format(print_rms, print_unit))
+        print("# If there are strong sidelobes this may overestimate the RMS.")
         return rms
 
 
