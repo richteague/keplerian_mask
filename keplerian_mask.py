@@ -1,4 +1,3 @@
-
 """
 Task to build a Keplerian mask based on imaging parameters. This will read in
 the image properties from an initial imaging run which outputs a dirty image.
@@ -299,7 +298,7 @@ def _save_as_image(image, mask, overwrite=True):
     outfile = _trim_name(image).replace('.image', '.mask.image')
     if overwrite:
         rmtables(outfile)
-    ia.fromarray(pixels=mask, outfile=outfile, csys=coord_sys)
+    ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
     ia.close()
 
 
