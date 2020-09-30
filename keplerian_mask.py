@@ -298,7 +298,10 @@ def _save_as_image(image, mask, overwrite=True):
     outfile = _trim_name(image).replace('.image', '.mask.image')
     if overwrite:
         rmtables(outfile)
-    ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
+    try:
+        ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
+    except RuntimeError:
+        ia.fromarray(pixels=mask, outfile=outfile, csys=coord_sys)
     ia.close()
 
 
