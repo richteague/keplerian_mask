@@ -2,6 +2,8 @@
 
 A script to build a Keplerian mask based to be used for CLEANing or moment map analysis. This will grab the image properties (axes, beam properties and so on) from the provide CASA image.
 
+[![DOI](https://zenodo.org/badge/247991417.svg)](https://zenodo.org/badge/latestdoi/247991417)
+
 ## Basic Usage
 
 First, load up the function into the CASA instance:
