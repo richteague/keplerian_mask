@@ -8,7 +8,7 @@ Usage
 Load up the functions.
 
 > execfile('path/to/keplerian_mask.py')
-> Succesfully imported `make_mask`.
+> Successfully imported `make_mask`.
 
 With this loaded, to make a Keplerian mask you will get,
 
@@ -23,7 +23,7 @@ Additional Parameters
 We can also include a non-zero emission height for molecules like 12CO. This
 can either by specified by a constant z/r value with the `zr` argument,
 
-> make_mask('image_name.image', inc=30.0, PA=75.0,
+> make_mask(image='image_name.image', inc=30.0, PA=75.0,
 >           mstar=1.0, dist=140.0, vlsr=5.1e3, zr=0.3)
 
 If you want a more complex emission surface you can define a function which
@@ -123,7 +123,7 @@ def _get_offsets(image, restfreqs=None):
 
 def _make_axis(header, axis_name):
     """
-    Make the requestest axis based on the provided image. Assumes that the disk
+    Make the requested axis based on the provided image. Assumes that the disk
     is centered. TODO: Check half-pixel offset.
 
     Args:
@@ -490,4 +490,4 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         return rms
 
 
-print('Succesfully imported `make_mask`.')
+print('Successfully imported `make_mask`.')
