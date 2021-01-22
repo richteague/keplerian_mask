@@ -10,7 +10,7 @@ First, load up the function into the CASA instance:
 
 ```python
 CASA <X>: execfile('path/to/keplerian_mask.py')
-     ...: Succesfully imported `make_mask`.
+     ...: Successfully imported `make_mask`.
 ```
 
 With this loaded, to make a Keplerian mask you just need to provide some simple geometrical properties of the disk:
