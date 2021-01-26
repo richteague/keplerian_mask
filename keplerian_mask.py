@@ -473,8 +473,10 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     if image is None:
         return np.where(mask <= tolerance, False, True)
 
+    # We should drop the Stokes axis if not in original image: 
+    dropstokes = 'stokes' not in map(str.lower, imhead(image)['axisnames'])    
     # Save it as a mask. Again, clunky but it works.
-    _save_as_image(image, mask)
+    _save_as_image(image, mask, dropdeg=dropstokes)
     if (nbeams is not None) or (target_res is not None):
         _convolve_image(image, image.replace('.image', '.mask.image'),
                         nbeams=nbeams, target_res=target_res)
@@ -484,7 +486,7 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # Export as a FITS file if requested.
     if export_FITS:
         exportfits(imagename=mask, fitsimage=mask.replace('.image', '.fits'),
-                   dropstokes=True)
+                   dropstokes=dropstokes)
 
     # Estimate the RMS of the un-masked pixels.
     if estimate_rms:
