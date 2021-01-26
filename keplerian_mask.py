@@ -261,7 +261,10 @@ def _midplane_coords(x, y, dx0=0.0, dy0=0.0, inc=0.0, PA=0.0):
 def _keplerian(r, t, z, mstar, dist, inc):
     """Calculate projected Keplerian rotation at each pixel."""
     v = sc.G * mstar * 1.989e30 * (r * dist * sc.au)**2
-    v *= np.power(np.hypot(r, z) * sc.au * dist, -3.0)
+    # Velocity is formally infinite at the origin, so handle that case: 
+    origin = np.logical_and(r==0, z==0)
+    v[origin] = 1E30  # Just something big...
+    v[~origin] *= np.power(np.hypot(r[~origin], z[~origin]) * sc.au * dist, -3.0)
     return np.sqrt(v) * np.cos(t) * np.sin(np.radians(abs(inc)))
 
 
@@ -282,7 +285,11 @@ def _get_projected_vkep(rvals, tvals, zvals, mstar, dist, inc, vlsr):
 
 def _get_linewidth(rvals, dV0, dVq):
     """Return the Doppler width in [m/s] of the line at each position."""
-    return dV0 * rvals**dVq
+    # Avoid divide-by-zero at the origin: 
+    origin = rvals == 0
+    linewidth = np.zeros_like(rvals)
+    linewidth[~origin] = dV0 * rvals[~origin]**dVq
+    return linewidth
 
 
 def _trim_name(image):
