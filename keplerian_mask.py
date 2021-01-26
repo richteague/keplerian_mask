@@ -297,7 +297,7 @@ def _trim_name(image):
     return image[:-1] if image[-1] == '/' else image
 
 
-def _save_as_image(image, mask, overwrite=True):
+def _save_as_image(image, mask, overwrite=True, dropdeg=True):
     """Save as an image by copying the header info from 'image'."""
     ia.open(image)
     coord_sys = ia.coordsys().torecord()
@@ -305,9 +305,9 @@ def _save_as_image(image, mask, overwrite=True):
     outfile = _trim_name(image).replace('.image', '.mask.image')
     if overwrite:
         rmtables(outfile)
-    try:
+    if dropdeg:
         ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
-    except RuntimeError:
+    else:
         ia.fromarray(pixels=mask, outfile=outfile, csys=coord_sys)
     ia.close()
 
