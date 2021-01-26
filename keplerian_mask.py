@@ -376,10 +376,11 @@ def _save_as_mask(image, tolerance=0.01):
             masked.
     """
     ia.open(image)
-    ia.calcmask('"{}" > {:.2f}'.format(image, tolerance), name='mask0')
+    # Replace the pixel values in-place in the image with 1 or 0. The
+    # 'iif' function takes a boolean arg first, then returns the second
+    # arg if true and third arg if false. 
+    ia.calc('iif("{}" > {:.2f}, 1, 0)'.format(image, tolerance), verbose=False)
     ia.done()
-    makemask(mode='copy', inpimage=image, inpmask='{}:mask0'.format(image),
-             output=image, overwrite=True)
 
 
 def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
