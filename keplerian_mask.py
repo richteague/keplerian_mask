@@ -83,7 +83,7 @@ def _mask_name(imagename):
     outfile = _trim_name(imagename)
     assert re.search(r'\.(fits|image)$', outfile, flags=re.IGNORECASE), \
       "Unrecognized image extension: {}".format(imagename)
-    return re.sub(r'\.(fits|image)$', r'\.mask.image', outfile, flags=re.IGNORECASE)
+    return re.sub(r'\.(fits|image)$', r'.mask.image', outfile, flags=re.IGNORECASE)
 
 def _get_axis_idx(header, axis_name):
     """Return the axis number of the given axis."""
@@ -318,6 +318,15 @@ def _save_as_image(image, mask, overwrite=True, dropdeg=True):
     if dropdeg:
         ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
     else:
+        # Make sure the Stokes axis is in the same place in the input image
+        # as we assumed in making the mask, and swap if not: 
+        header = imhead(image, mode='list')
+        stokes_idx = _get_axis_idx(header, 'stokes')
+        if stokes_idx != 3:
+            assert stokes_idx == 4, "Stokes axis is position {},".format(stokes_idx) + \
+              " not in expected location (3 or 4); check image?"
+            # Swap Stokes and frequency axes:
+            mask = np.swapaxes(mask, 2, 3)
         ia.fromarray(pixels=mask, outfile=outfile, csys=coord_sys)
     ia.close()
 
