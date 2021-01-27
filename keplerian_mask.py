@@ -307,7 +307,7 @@ def _trim_name(image):
     return image[:-1] if image[-1] == '/' else image
 
 
-def _save_as_image(image, mask, overwrite=True, dropdeg=True):
+def _save_as_image(image, mask, overwrite=True, dropstokes=True):
     """Save as an image by copying the header info from 'image'."""
     ia.open(image)
     coord_sys = ia.coordsys().torecord()
@@ -315,8 +315,9 @@ def _save_as_image(image, mask, overwrite=True, dropdeg=True):
     outfile = _mask_name(image)
     if overwrite:
         rmtables(outfile)
-    if dropdeg:
-        ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
+    if dropstokes:
+        ia.fromarray(pixels=np.squeeze(mask, axis=2),
+                     outfile=outfile, csys=coord_sys)
     else:
         # Make sure the Stokes axis is in the same place in the input image
         # as we assumed in making the mask, and swap if not: 
@@ -497,7 +498,7 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # We should drop the Stokes axis if not in original image: 
     dropstokes = 'stokes' not in map(str.lower, imhead(image)['axisnames'])    
     # Save it as a mask. Again, clunky but it works.
-    _save_as_image(image, mask, dropdeg=dropstokes)
+    _save_as_image(image, mask, dropstokes=dropstokes)
     if (nbeams is not None) or (target_res is not None):
         _convolve_image(image, _mask_name(image),
                         nbeams=nbeams, target_res=target_res)
