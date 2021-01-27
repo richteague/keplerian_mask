@@ -73,7 +73,17 @@ richard.d.teague@cfa.harvard.edu
 
 import numpy as np
 import scipy.constants as sc
+import re
 
+def _mask_name(imagename):
+    """Return a string for the output image name
+       for the mask.  Whether the input is .fits
+       or .image, we will write the mask file
+       output as native CASA .image."""
+    outfile = _trim_name(imagename)
+    assert re.search(r'\.(fits|image)$', outfile, flags=re.IGNORECASE), \
+      "Unrecognized image extension: {}".format(imagename)
+    return re.sub(r'\.(fits|image)$', r'\.mask.image', outfile, flags=re.IGNORECASE)
 
 def _get_axis_idx(header, axis_name):
     """Return the axis number of the given axis."""
@@ -302,7 +312,7 @@ def _save_as_image(image, mask, overwrite=True, dropdeg=True):
     ia.open(image)
     coord_sys = ia.coordsys().torecord()
     ia.close()
-    outfile = _trim_name(image).replace('.image', '.mask.image')
+    outfile = _mask_name(image)
     if overwrite:
         rmtables(outfile)
     if dropdeg:
@@ -336,7 +346,7 @@ def _convolve_image(image, mask, nbeams=None, target_res=None, overwrite=True):
         overwrite (optional[bool]): If True, overwrite the input image with
             the convolved image.
     """
-    image = image[:-1] if image[-1] == '/' else image
+    image = _trim_name(image)
     if nbeams is None and target_res is None:
         raise ValueError("Must specify 'nbeams' or 'target_res'.")
     if target_res is None:
@@ -479,19 +489,20 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # Save it as a mask. Again, clunky but it works.
     _save_as_image(image, mask, dropdeg=dropstokes)
     if (nbeams is not None) or (target_res is not None):
-        _convolve_image(image, image.replace('.image', '.mask.image'),
+        _convolve_image(image, _mask_name(image),
                         nbeams=nbeams, target_res=target_res)
-    _save_as_mask(image.replace('.image', '.mask.image'), tolerance)
-    mask = image.replace('.image', '.mask.image')
+    mask_filename = _mask_name(image)
+    _save_as_mask(mask_filename, tolerance)
 
     # Export as a FITS file if requested.
     if export_FITS:
-        exportfits(imagename=mask, fitsimage=mask.replace('.image', '.fits'),
+        exportfits(imagename=mask_filename,
+                   itsimage=mask_filename.replace('.image', '.fits'),
                    dropstokes=dropstokes)
 
     # Estimate the RMS of the un-masked pixels.
     if estimate_rms:
-        rms = imstat(imagename=image, mask='"{}" < 1.0'.format(mask))['rms'][0]
+        rms = imstat(imagename=image, mask='"{}" < 1.0'.format(mask_filename))['rms'][0]
         print_rms = rms if rms > 1e-2 else rms * 1e3
         print_unit = 'Jy' if rms > 1e-2 else 'mJy'
         print("# Estimated RMS of unmasked regions: " +
