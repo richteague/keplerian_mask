@@ -413,7 +413,8 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
               image=None, x_axis=None, y_axis=None, s_axis=None, v_axis=None,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
-              estimate_rms=True, max_dzr=0.2, export_FITS=False):
+              estimate_rms=True, max_dzr=0.2, export_FITS=False,
+              ignore_chans=None):
     """
     Make a Keplerian mask for CLEANing.
 
@@ -464,7 +465,9 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         max_dzr (optional[float]): Maximum spacing in zr to use when filling in
             the image plane for highly elevated models.
         export_FITS (optional[bool]): If True, export the mask as a FITS file.
-
+        ignore_chans (int or list of ints): Channel numbers in input image to 
+            mask completely, e.g. if affected by cloud emission. Channel numbers
+            are 0-based, i.e. they are what you would specify in CASA. 
     Returns (if `image` is not None):
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
 
@@ -496,6 +499,10 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             else:
                 mask = np.where(np.logical_or(mask, tmp_mask), 1.0, 0.0)
 
+    # Mask out any bad channels:
+    if ignore_chans is not None:
+        mask[:,:,:,ignore_chans] = 0
+                
     # If any image was not specified, we return the array here.
     if image is None:
         return np.where(mask <= tolerance, False, True)
