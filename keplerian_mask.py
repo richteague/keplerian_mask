@@ -73,7 +73,17 @@ richard.d.teague@cfa.harvard.edu
 
 import numpy as np
 import scipy.constants as sc
+import re
 
+def _mask_name(imagename):
+    """Return a string for the output image name
+       for the mask.  Whether the input is .fits
+       or .image, we will write the mask file
+       output as native CASA .image."""
+    outfile = _trim_name(imagename)
+    assert re.search(r'\.(fits|image)$', outfile, flags=re.IGNORECASE), \
+      "Unrecognized image extension: {}".format(imagename)
+    return re.sub(r'\.(fits|image)$', r'.mask.image', outfile, flags=re.IGNORECASE)
 
 def _get_axis_idx(header, axis_name):
     """Return the axis number of the given axis."""
@@ -87,7 +97,7 @@ def _get_axis_idx(header, axis_name):
 
 
 def _string_to_Hz(string):
-    """Convert a string to a frquency in [Hz]."""
+    """Convert a string to a frequency in [Hz]."""
     if isinstance(string, float):
         return string
     if isinstance(string, int):
@@ -136,7 +146,7 @@ def _make_axis(header, axis_name):
         axis (ndarray): The requested axis.
     """
 
-    # If we want the velocity axis, make a frequnecy
+    # If we want the velocity axis, make a frequency
     # axis first and then convert to velocity.
     if axis_name.lower() == 'velocity':
         axis_name = 'frequency'
@@ -206,13 +216,13 @@ def _deproject(x, y, dx0=0.0, dy0=0.0, inc=0.0, PA=0.0, zr=0.0, z_func=None):
         PA (optional[float]): Disk position angle, measured to the redshifted
             axis in an Eastward direction in [deg].
         zr (optional[float]): z/r value to assume for the emission.
-        z_func (optional[callabe]): A user-defined emission height function
+        z_func (optional[callable]): A user-defined emission height function
             returning the height of the emission in [arcsec] for a given radius
             in [arcsec].
 
     Returns:
         rvals, tvals, zvals (ndarrays): Radius, azimuthal and height
-            deprojected coordinates in [arcsec], [rad], [arcec], respectively.
+            deprojected coordinates in [arcsec], [rad], [arcsec], respectively.
     """
 
     # Define the emission function. This is bit messy to account for the
@@ -252,7 +262,7 @@ def _incline(x, y, inc):
 
 
 def _midplane_coords(x, y, dx0=0.0, dy0=0.0, inc=0.0, PA=0.0):
-    """Get the midplane cartesian coordiantes."""
+    """Get the midplane cartesian coordinates."""
     x_mid, y_mid = np.meshgrid(x - dx0, y - dy0)
     x_mid, y_mid = _rotate(x_mid, y_mid, PA)
     return _incline(x_mid, y_mid, inc)
@@ -261,7 +271,10 @@ def _midplane_coords(x, y, dx0=0.0, dy0=0.0, inc=0.0, PA=0.0):
 def _keplerian(r, t, z, mstar, dist, inc):
     """Calculate projected Keplerian rotation at each pixel."""
     v = sc.G * mstar * 1.989e30 * (r * dist * sc.au)**2
-    v *= np.power(np.hypot(r, z) * sc.au * dist, -3.0)
+    # Velocity is formally infinite at the origin, so handle that case: 
+    origin = np.logical_and(r==0, z==0)
+    v[origin] = 1E30  # Just something big...
+    v[~origin] *= np.power(np.hypot(r[~origin], z[~origin]) * sc.au * dist, -3.0)
     return np.sqrt(v) * np.cos(t) * np.sin(np.radians(abs(inc)))
 
 
@@ -282,7 +295,11 @@ def _get_projected_vkep(rvals, tvals, zvals, mstar, dist, inc, vlsr):
 
 def _get_linewidth(rvals, dV0, dVq):
     """Return the Doppler width in [m/s] of the line at each position."""
-    return dV0 * rvals**dVq
+    # Avoid divide-by-zero at the origin: 
+    origin = rvals == 0
+    linewidth = np.zeros_like(rvals)
+    linewidth[~origin] = dV0 * rvals[~origin]**dVq
+    return linewidth
 
 
 def _trim_name(image):
@@ -290,17 +307,27 @@ def _trim_name(image):
     return image[:-1] if image[-1] == '/' else image
 
 
-def _save_as_image(image, mask, overwrite=True):
+def _save_as_image(image, mask, overwrite=True, dropstokes=True):
     """Save as an image by copying the header info from 'image'."""
     ia.open(image)
     coord_sys = ia.coordsys().torecord()
     ia.close()
-    outfile = _trim_name(image).replace('.image', '.mask.image')
+    outfile = _mask_name(image)
     if overwrite:
         rmtables(outfile)
-    try:
-        ia.fromarray(pixels=np.squeeze(mask), outfile=outfile, csys=coord_sys)
-    except RuntimeError:
+    if dropstokes:
+        ia.fromarray(pixels=np.squeeze(mask, axis=2),
+                     outfile=outfile, csys=coord_sys)
+    else:
+        # Make sure the Stokes axis is in the same place in the input image
+        # as we assumed in making the mask, and swap if not: 
+        header = imhead(image, mode='list')
+        stokes_idx = _get_axis_idx(header, 'stokes')
+        if stokes_idx != 3:
+            assert stokes_idx == 4, "Stokes axis is position {},".format(stokes_idx) + \
+              " not in expected location (3 or 4); check image?"
+            # Swap Stokes and frequency axes:
+            mask = np.swapaxes(mask, 2, 3)
         ia.fromarray(pixels=mask, outfile=outfile, csys=coord_sys)
     ia.close()
 
@@ -316,20 +343,20 @@ def _read_beam(image, axis='major'):
     return header['beam{}'.format(axis)]['value']
 
 
-def _convolve_image(image, mask, nbeams=None, target_res=None, overwrite=True):
+def _convolve_image(image, mask_name, nbeams=None, target_res=None, overwrite=True):
     """
     Convolve the mask with a 2D Gaussian beam.
 
     Args:
         image (str): Path to the image to containing the beam to use.
-        mask (str): Path to the mask to convolve.
+        mask_name (str): Path to the mask to convolve.
         nbeams (optional[float]): Scale the convolution kernel to this many
             times the clean beam size of the image.
         target_res (optional[float]): Size of the convolution kernel in arcsec.
         overwrite (optional[bool]): If True, overwrite the input image with
             the convolved image.
     """
-    image = image[:-1] if image[-1] == '/' else image
+    image = _trim_name(image)
     if nbeams is None and target_res is None:
         raise ValueError("Must specify 'nbeams' or 'target_res'.")
     if target_res is None:
@@ -341,12 +368,13 @@ def _convolve_image(image, mask, nbeams=None, target_res=None, overwrite=True):
     if isinstance(major, float):
         major = '{:.2f}arcsec'.format(major)
         minor = '{:.2f}arcsec'.format(minor)
-    imsmooth(imagename=mask, outfile=mask+'.conv',
+    outfile = mask_name + '.conv'
+    imsmooth(imagename=mask_name, outfile=outfile,
              overwrite=True, kernel='gauss', major=major, minor=minor,
              pa='{:.2f}deg'.format(_read_beam(image, 'positionangle')))
     if overwrite:
-        os.system('rm -rf {}'.format(mask))
-        os.system('mv {}.conv {}'.format(mask, mask))
+        os.system('rm -rf {}'.format(mask_name))
+        os.system('mv {} {}'.format(outfile, mask_name))
 
 
 def _make_zr_list(zr, max_dzr=0.1):
@@ -361,18 +389,19 @@ def _make_zr_list(zr, max_dzr=0.1):
 
 def _save_as_mask(image, tolerance=0.01):
     """
-    Save the provided images as a boolean mask.
+    Convert the provided image file in-place to a boolean mask.
 
     Args:
-        image (str): Image to save as a mask.
+        image (str): Path to image to save as a mask.
         tolerance (optional[float]): Values below this value considered to be
             masked.
     """
     ia.open(image)
-    ia.calcmask('"{}" > {:.2f}'.format(image, tolerance), name='mask0')
+    # Replace the pixel values in-place in the image with 1 or 0. The
+    # 'iif' function takes a boolean arg first, then returns the second
+    # arg if true and third arg if false. 
+    ia.calc('iif("{}" > {:.2f}, 1, 0)'.format(image, tolerance), verbose=False)
     ia.done()
-    makemask(mode='copy', inpimage=image, inpmask='{}:mask0'.format(image),
-             output=image, overwrite=True)
 
 
 def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
@@ -413,13 +442,13 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             Doppler width as a function of radius.
         r_min (optional[float]): Minimum radius in [arcsec] of the mask.
         r_max (optional[float]): Maximum radius in [arcsec] of the mask.
-        nbeams (optional[float]): Convovle the mask with a beam with axes
+        nbeams (optional[float]): Convolve the mask with a beam with axes
             scaled by a factor of `nbeams`.
         target_res (optional[float]): Instead of scaling the CLEAN beam for the
             convolution kernel, specify the FWHM of the convolution kernel
             directly.
         tolerance (optional[float]): The threshold to consider the convolved
-            mask where there is emisson. Typically used to remove the noise
+            mask where there is emission. Typically used to remove the noise
             from the convolution.
         restfreqs (optional[list]): If the image contains multiple lines, a
             list of their rest frequencies. Can either be in strings
@@ -466,22 +495,26 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     if image is None:
         return np.where(mask <= tolerance, False, True)
 
+    # We should drop the Stokes axis if not in original image: 
+    dropstokes = 'stokes' not in map(str.lower, imhead(image)['axisnames'])    
     # Save it as a mask. Again, clunky but it works.
-    _save_as_image(image, mask)
+    _save_as_image(image, mask, dropstokes=dropstokes)
     if (nbeams is not None) or (target_res is not None):
-        _convolve_image(image, image.replace('.image', '.mask.image'),
+        _convolve_image(image, _mask_name(image),
                         nbeams=nbeams, target_res=target_res)
-    _save_as_mask(image.replace('.image', '.mask.image'), tolerance)
-    mask = image.replace('.image', '.mask.image')
+    mask_filename = _mask_name(image)
+    # Convert the image in-place to a boolean mask with only 1/0 values: 
+    _save_as_mask(mask_filename, tolerance)
 
     # Export as a FITS file if requested.
     if export_FITS:
-        exportfits(imagename=mask, fitsimage=mask.replace('.image', '.fits'),
-                   dropstokes=True)
+        exportfits(imagename=mask_filename,
+                   fitsimage=mask_filename.replace('.image', '.fits'),
+                   dropstokes=dropstokes)
 
     # Estimate the RMS of the un-masked pixels.
     if estimate_rms:
-        rms = imstat(imagename=image, mask='"{}" < 1.0'.format(mask))['rms'][0]
+        rms = imstat(imagename=image, mask='"{}" < 1.0'.format(mask_filename))['rms'][0]
         print_rms = rms if rms > 1e-2 else rms * 1e3
         print_unit = 'Jy' if rms > 1e-2 else 'mJy'
         print("# Estimated RMS of unmasked regions: " +
