@@ -340,7 +340,12 @@ def _read_beam(image, axis='major'):
         return beam[axis]['value']
     except KeyError:
         axis = 'pa' if axis == 'positionangle' else axis
-    return header['beam{}'.format(axis)]['value']
+    if axis == 'pa':
+        PA = header['beam{}'.format(axis)]['value']
+        unit = header['beam{}'.format(axis)]['unit']
+        return PA if unit == 'deg' else np.degrees(PA)
+    else:
+        return header['beam{}'.format(axis)]['value']
 
 
 def _convolve_image(image, mask_name, nbeams=None, target_res=None, overwrite=True):
