@@ -422,7 +422,7 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
               estimate_rms=True, max_dzr=0.2, export_FITS=False,
-              ignore_chans=None):
+              ignore_chans=None, ignore_only=False):
     """
     Make a Keplerian mask for CLEANing.
 
@@ -475,7 +475,12 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         export_FITS (optional[bool]): If True, export the mask as a FITS file.
         ignore_chans (int or list of ints): Channel numbers in input image to 
             mask completely, e.g. if affected by cloud emission. Channel numbers
-            are 0-based, i.e. they are what you would specify in CASA. 
+            are 0-based, i.e. they are what you would specify in CASA.
+        ignore_only (optional[bool]): If True, then the channels in ignore_chans
+            are masked completely and all other channels are passed through
+            completely, i.e. they are all ones. Useful to make a simple mask
+            for excluding cloud-contaminated channels without specifying any
+            other information, e.g. for making first-moment maps.
     Returns (if `image` is not None):
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
 
@@ -513,6 +518,10 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # Mask out any bad channels:
     if ignore_chans is not None:
         mask[:,:,:,ignore_chans] = 0
+        if ignore_only:
+        # Pass through all other channels, despite what we did above:
+            good_chans = [j for j in range(mask.shape[-1]) if j not in ignore_chans]
+            mask[:,:,:,good_chans] = 1
                 
     # If any image was not specified, we return the array here.
     if image is None:
