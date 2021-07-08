@@ -51,6 +51,13 @@ which can be changed with the `dV0` and `dVq` parameters.
 Note that these will have a significant effect on the shape of the mask,
 particularly in the outer disk.
 
+If there is some uncertainty on the orientation of the disk, PA and 
+inclination can be lists or iterables to allow a range of values in the mask:
+
+> make_mask(image='image_name.image', inc=[30, 35, 40], 
+>           PA=range(60, 81, 5), mstar=1.0,
+>           dist=140.0, vlsr=5.1e3, zr=0.3)
+
 Finally, one can also convolve the mask with a 2D Gaussian beam. This can
 either be a scale version of the clean beam attached to the image, using the
 parameter `nbeams`,
@@ -74,6 +81,7 @@ richard.d.teague@cfa.harvard.edu
 import numpy as np
 import scipy.constants as sc
 import re
+import itertools
 
 def _mask_name(imagename):
     """Return a string for the output image name
@@ -413,14 +421,15 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
               image=None, x_axis=None, y_axis=None, s_axis=None, v_axis=None,
               z_func=None, dV0=300.0, dVq=-0.5, r_min=0.0, r_max=4.0,
               nbeams=None, target_res=None, tolerance=0.01, restfreqs=None,
-              estimate_rms=True, max_dzr=0.2, export_FITS=False):
+              estimate_rms=True, max_dzr=0.2, export_FITS=False,
+              ignore_chans=None, ignore_only=False):
     """
     Make a Keplerian mask for CLEANing.
 
     Args:
-        inc (float): Inclination of the disk in [deg].
-        PA (float): Position angle of the disk, measured Eastwards of North to
-            the redshifted axis, in [deg].
+        inc (float or list): Inclination of the disk in [deg].
+        PA (float or list): Position angle of the disk, measured Eastwards of 
+            North to the redshifted axis, in [deg].
         dist (float): Source distance in [pc].
         mstar (float): Mass of the central star in [Msun].
         vlsr (float): Systemic velocity in [m/s].
@@ -464,7 +473,14 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
         max_dzr (optional[float]): Maximum spacing in zr to use when filling in
             the image plane for highly elevated models.
         export_FITS (optional[bool]): If True, export the mask as a FITS file.
-
+        ignore_chans (int or list of ints): Channel numbers in input image to 
+            mask completely, e.g. if affected by cloud emission. Channel numbers
+            are 0-based, i.e. they are what you would specify in CASA.
+        ignore_only (optional[bool]): If True, then the channels in ignore_chans
+            are masked completely and all other channels are passed through
+            completely, i.e. they are all ones. Useful to make a simple mask
+            for excluding cloud-contaminated channels without specifying any
+            other information, e.g. for making first-moment maps.
     Returns (if `image` is not None):
         rms (float): The RMS of the masked regions if `estimate_rms` is True.
 
@@ -482,11 +498,14 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
     # Define the rest frequencies and cycle through them.
     mask = None
     zr_list = _make_zr_list(zr, max_dzr) if z_func is None else [-1., 0., 1.]
+    incl_list = np.atleast_1d(inc)
+    PA_list = np.atleast_1d(PA)
+    # Cycle through the various params and combine all masks into one: 
     for offset in _get_offsets(image, restfreqs):
-        for zr in zr_list:
+        for zr, incl_i, PA_i in itertools.product(zr_list, incl_list, PA_list):
             r, t, z = _get_disk_coords(x_axis, y_axis, s_axis, v_axis,
-                                       dx0, dy0, inc, PA, zr, z_func)
-            vkep = _get_projected_vkep(r, t, z, mstar, dist, inc, vlsr+offset)
+                                       dx0, dy0, incl_i, PA_i, zr, z_func)
+            vkep = _get_projected_vkep(r, t, z, mstar, dist, incl_i, vlsr+offset)
             dV = _get_linewidth(r, dV0, dVq)
             r_mask = np.logical_and(r >= r_min, r <= r_max)
             v_mask = abs(v_axis[None, None, None, :] - vkep) < dV + dvchan
@@ -496,6 +515,14 @@ def make_mask(inc, PA, dist, mstar, vlsr, dx0=0.0, dy0=0.0, zr=0.0,
             else:
                 mask = np.where(np.logical_or(mask, tmp_mask), 1.0, 0.0)
 
+    # Mask out any bad channels:
+    if ignore_chans is not None:
+        mask[:,:,:,ignore_chans] = 0
+        if ignore_only:
+        # Pass through all other channels, despite what we did above:
+            good_chans = [j for j in range(mask.shape[-1]) if j not in ignore_chans]
+            mask[:,:,:,good_chans] = 1
+                
     # If any image was not specified, we return the array here.
     if image is None:
         return np.where(mask <= tolerance, False, True)
